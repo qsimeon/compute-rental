@@ -2,16 +2,16 @@
 
 > Securely rent out unused institutional compute resources and subscriptions with automated ephemeral SSH access
 
-ComputeShare is a web application that enables institutions to maximize their compute infrastructure utilization by allowing users to securely rent out their unused cluster access, ChatGPT subscriptions, and other computational resources. The platform automates secure credential sharing through SSH Certificate Authority and time-limited access tokens, ensuring compliance and auditability while eliminating manual intervention.
+ComputeShare is a TypeScript library that enables institutions to maximize their compute infrastructure utilization by allowing users to securely rent out their unused cluster access, ChatGPT subscriptions, and other computational resources. The platform automates secure credential sharing through ephemeral SSH key generation and encrypted access grants, ensuring security and auditability.
 
 ## ✨ Features
 
-- **Automated Resource Marketplace** — Browse and rent available compute resources including HPC clusters, GPU nodes, and API subscriptions. Resources are automatically listed when idle and removed when in use by the owner.
-- **Ephemeral SSH Access** — Secure, time-limited SSH access using Certificate Authority (CA) signed certificates. No permanent key sharing required - credentials automatically expire after the rental period.
-- **OAuth2/OIDC Authentication** — Enterprise-grade authentication with institutional SSO support. Users authenticate once and receive role-based access to resources based on their permissions.
-- **Real-time Resource Monitoring** — Track resource utilization, active rentals, and usage statistics in real-time. Owners can see who's using their resources and renters can monitor their consumption.
-- **Audit Trail & Compliance** — Complete audit logging of all access events, credential issuance, and resource usage. Meets institutional compliance requirements with detailed reporting capabilities.
-- **Automated Billing & Credits** — Internal credit system for tracking resource usage. Automatic billing based on compute time, with configurable pricing models per resource type.
+- **Subscription Management** — Register and track compute resources including HPC clusters, GPU nodes, and API subscriptions. Monitor available capacity and usage in real-time.
+- **Ephemeral SSH Access** — Secure, time-limited SSH key pairs generated on-demand. Keys automatically expire after the rental period - no permanent key sharing required.
+- **Encrypted Credentials** — AES-256-GCM encryption for all credential storage and transmission. Secure access grants that can be safely stored and transmitted.
+- **Dynamic Pricing** — Demand-based pricing engine that adjusts rates based on available capacity. Higher demand = higher prices automatically.
+- **Access Grants** — Time-limited access tokens that can be validated and revoked at any time. Complete audit trail of who accessed what and when.
+- **Input Validation** — Built-in validation for emails, SSH keys, and resource types to prevent security issues.
 
 ## 📦 Installation
 
@@ -19,364 +19,304 @@ ComputeShare is a web application that enables institutions to maximize their co
 
 - Node.js 18.0+
 - TypeScript 5.0+
-- PostgreSQL 14+ or compatible database
-- SSH Certificate Authority setup (or OpenSSH 7.2+)
-- OAuth2/OIDC provider (e.g., Keycloak, Auth0, or institutional SSO)
 
 ### Setup
 
-1. git clone https://github.com/your-org/computeshare.git && cd computeshare
-   - Clone the repository and navigate to the project directory
-2. npm install
-   - Install all required dependencies including TypeScript, Express, and security libraries
-3. cp .env.example .env
-   - Create environment configuration file for secrets and settings
-4. Edit .env file with your database URL, OAuth2 credentials, and SSH CA paths
-   - Configure database connection, authentication provider, and SSH certificate authority settings
-5. npm run db:migrate
-   - Run database migrations to create tables for users, resources, reservations, and audit logs
-6. npm run setup:ssh-ca
-   - Initialize SSH Certificate Authority or configure existing CA integration
-7. npm run build
-   - Compile TypeScript to JavaScript for production
-8. npm run dev
-   - Start the development server on http://localhost:3000
+```bash
+# Clone the repository
+git clone https://github.com/your-org/computeshare.git && cd computeshare
+
+# Install dependencies
+npm install
+
+# Run the demo
+npm run dev
+
+# Or build and run
+npm run build
+npm start
+```
 
 ## 🚀 Usage
 
 ### Register a Compute Resource
 
-Register your institutional cluster or GPU node to make it available for rental when idle
+Register your institutional cluster or GPU node to make it available for rental:
 
-```
-import { ResourceManager } from './lib/core';
+```typescript
+import { SubscriptionManager } from './lib/core';
 import { ResourceType } from './types';
 
-const manager = new ResourceManager();
+const manager = new SubscriptionManager();
 
-// Register a compute cluster
-const resource = await manager.registerResource({
-  name: 'HPC Cluster Node 42',
-  type: ResourceType.SSH_CLUSTER,
-  sshHost: 'cluster.university.edu',
-  sshPort: 22,
-  maxConcurrentUsers: 3,
-  pricePerHour: 10, // internal credits
-  metadata: {
-    cpuCores: 64,
-    ramGB: 256,
-    gpus: 4
-  }
-});
+// Register a compute cluster with 100 hours capacity, 10 already used
+const subscription = manager.registerSubscription(
+  'user-professor123',      // owner ID
+  ResourceType.SSH_CLUSTER, // resource type
+  100,                      // total usage limit
+  10                        // current usage
+);
 
-console.log(`Resource registered: ${resource.id}`);
-console.log(`Status: ${resource.status}`);
-console.log(`Available for rental: ${resource.isAvailable}`);
-
+console.log(`Subscription ID: ${subscription.id}`);
+console.log(`Status: ${subscription.status}`);
+console.log(`Available capacity: ${manager.getAvailableCapacity(subscription.id)}%`);
 ```
 
 **Output:**
 
 ```
-Resource registered: res_abc123xyz
-Status: available
-Available for rental: true
+Subscription ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+Status: active
+Available capacity: 90%
 ```
 
-### Request Access to a Resource
+### Find Available Resources
 
-Browse available resources and request time-limited access with automatic SSH credential provisioning
+Search for available subscriptions that match your needs:
 
-```
-import { AccessManager } from './lib/core';
-import { Duration } from './lib/utils';
+```typescript
+import { SubscriptionManager } from './lib/core';
+import { ResourceType } from './types';
 
-const accessMgr = new AccessManager();
+const manager = new SubscriptionManager();
 
-// Request 4-hour access to a cluster
-const reservation = await accessMgr.requestAccess({
-  resourceId: 'res_abc123xyz',
-  userId: 'user_student123',
-  duration: Duration.hours(4),
-  purpose: 'Machine learning model training'
-});
+// Find SSH clusters with at least 50% capacity available
+const available = manager.findAvailableSubscriptions(
+  ResourceType.SSH_CLUSTER,
+  50 // minimum capacity percentage
+);
 
-// Get ephemeral SSH credentials
-const credentials = await accessMgr.getCredentials(reservation.id);
-
-console.log('Access granted!');
-console.log(`SSH Command: ssh -i ${credentials.privateKeyPath} ${credentials.username}@${credentials.host}`);
-console.log(`Valid until: ${credentials.expiresAt}`);
-console.log(`Certificate fingerprint: ${credentials.certFingerprint}`);
-
-```
-
-**Output:**
-
-```
-Access granted!
-SSH Command: ssh -i /tmp/ephemeral_key_xyz ${credentials.username}@cluster.university.edu
-Valid until: 2024-01-15T18:30:00Z
-Certificate fingerprint: SHA256:abc123def456...
-```
-
-### Monitor Active Rentals
-
-View all active rentals for your resources with real-time usage statistics
-
-```
-import { ResourceManager, AuditLogger } from './lib/core';
-
-const manager = new ResourceManager();
-const logger = new AuditLogger();
-
-// Get active rentals for your resources
-const myResources = await manager.getResourcesByOwner('user_professor456');
-
-for (const resource of myResources) {
-  const activeRentals = await manager.getActiveRentals(resource.id);
-  
-  console.log(`\nResource: ${resource.name}`);
-  console.log(`Active rentals: ${activeRentals.length}`);
-  
-  for (const rental of activeRentals) {
-    const usage = await logger.getUsageStats(rental.id);
-    console.log(`  - User: ${rental.userId}`);
-    console.log(`    Time remaining: ${rental.timeRemaining}`);
-    console.log(`    CPU usage: ${usage.cpuPercent}%`);
-  }
+console.log(`Found ${available.length} available cluster(s)`);
+for (const sub of available) {
+  console.log(`  - ${sub.id}: ${manager.getAvailableCapacity(sub.id)}% available`);
 }
+```
 
+### Generate Ephemeral SSH Credentials
+
+Create time-limited SSH key pairs for secure access:
+
+```typescript
+import { SSHKeyManager } from './lib/core';
+import { parseDuration } from './lib/utils';
+
+const sshManager = new SSHKeyManager();
+
+// Generate a key pair valid for 4 hours
+const duration = parseDuration('4h'); // 4 hours in milliseconds
+const keyPair = await sshManager.generateTemporaryKeyPair(duration);
+
+console.log(`Fingerprint: ${keyPair.fingerprint}`);
+console.log(`Expires at: ${keyPair.expiresAt}`);
+console.log(`Private key: ${keyPair.privateKey.substring(0, 50)}...`);
 ```
 
 **Output:**
 
 ```
-
-Resource: HPC Cluster Node 42
-Active rentals: 2
-  - User: user_student123
-    Time remaining: 2h 15m
-    CPU usage: 87%
-  - User: user_researcher789
-    Time remaining: 45m
-    CPU usage: 62%
+Fingerprint: a1b2c3d4e5f6789012345678901234567890abcdef...
+Expires at: 2024-01-15T18:30:00.000Z
+Private key: -----BEGIN PRIVATE KEY-----
+MIIJQgIBADANBgkqh...
 ```
 
-### Revoke Access Early
+### Create Secure Access Grants
 
-Immediately revoke access to a resource and invalidate all associated SSH certificates
+Encrypt credentials and create time-limited access grants:
 
-```
-import { AccessManager, CertificateAuthority } from './lib/core';
+```typescript
+import { AccessGrantManager } from './lib/core';
+import { parseDuration } from './lib/utils';
 
-const accessMgr = new AccessManager();
-const ca = new CertificateAuthority();
+const grantManager = new AccessGrantManager();
 
-// Revoke access to a specific reservation
-const reservationId = 'rsv_xyz789';
+// Encrypt sensitive credentials
+const credentials = {
+  host: 'cluster.university.edu',
+  port: 22,
+  username: 'rental-user',
+  privateKey: '-----BEGIN PRIVATE KEY-----...'
+};
+const encrypted = grantManager.encryptCredentials(credentials);
 
-try {
-  await accessMgr.revokeAccess(reservationId, {
-    reason: 'Owner needs resource urgently',
-    notifyUser: true
-  });
-  
-  // Verify certificate is revoked
-  const cert = await ca.getCertificateStatus(reservationId);
-  
-  console.log('Access revoked successfully');
-  console.log(`Certificate status: ${cert.status}`);
-  console.log(`Revocation time: ${cert.revokedAt}`);
-  console.log('User has been notified via email');
-} catch (error) {
-  console.error('Revocation failed:', error.message);
-}
+// Create a 4-hour access grant
+const grant = grantManager.createGrant(
+  'subscription-id-123', // subscription being accessed
+  'user-renter456',      // renter's user ID
+  parseDuration('4h'),   // duration
+  encrypted              // encrypted credentials
+);
 
+console.log(`Grant ID: ${grant.id}`);
+console.log(`Active: ${grant.isActive}`);
+console.log(`Expires: ${grant.expiresAt}`);
 ```
 
 **Output:**
 
 ```
-Access revoked successfully
-Certificate status: revoked
-Revocation time: 2024-01-15T14:22:33Z
-User has been notified via email
+Grant ID: b2c3d4e5-f6a7-8901-bcde-f23456789012
+Active: true
+Expires: 2024-01-15T18:30:00.000Z
 ```
 
-### Generate Audit Report
+### Calculate Dynamic Pricing
 
-Generate compliance reports showing all access events and resource usage for a time period
+Use demand-based pricing for fair resource allocation:
 
-```
-import { AuditLogger } from './lib/core';
-import { DateRange } from './lib/utils';
+```typescript
+import { PricingEngine, SubscriptionManager } from './lib/core';
+import { ResourceType } from './types';
+import { formatCurrency } from './lib/utils';
 
-const logger = new AuditLogger();
+const pricing = new PricingEngine();
+const manager = new SubscriptionManager();
 
-// Generate monthly audit report
-const report = await logger.generateReport({
-  dateRange: DateRange.lastMonth(),
-  resourceIds: ['res_abc123xyz'],
-  includeMetrics: true
-});
+// Get available capacity
+const capacity = manager.getAvailableCapacity('subscription-id');
 
-console.log('=== Audit Report ===');
-console.log(`Period: ${report.startDate} to ${report.endDate}`);
-console.log(`Total rentals: ${report.totalRentals}`);
-console.log(`Unique users: ${report.uniqueUsers}`);
-console.log(`Total compute hours: ${report.totalHours}`);
-console.log(`Revenue (credits): ${report.totalCredits}`);
-console.log(`\nSecurity events: ${report.securityEvents.length}`);
-console.log(`Failed access attempts: ${report.failedAttempts}`);
+// Calculate price based on demand
+const demandMultiplier = pricing.calculateDemandMultiplier(capacity);
+const price = pricing.calculatePrice(
+  ResourceType.GPU_COMPUTE,
+  8,              // 8 hours of usage
+  demandMultiplier
+);
 
+console.log(`Capacity: ${capacity}%`);
+console.log(`Demand multiplier: ${demandMultiplier}x`);
+console.log(`Price for 8 hours: ${formatCurrency(price)}`);
 ```
 
 **Output:**
 
 ```
-=== Audit Report ===
-Period: 2023-12-01 to 2023-12-31
-Total rentals: 47
-Unique users: 23
-Total compute hours: 312.5
-Revenue (credits): 3125
+Capacity: 35%
+Demand multiplier: 1.5x
+Price for 8 hours: $6.00
+```
 
-Security events: 2
-Failed access attempts: 5
+### Validate and Revoke Access
+
+Validate grants and revoke access when needed:
+
+```typescript
+import { AccessGrantManager } from './lib/core';
+
+const grantManager = new AccessGrantManager();
+
+// Check if a grant is still valid
+const isValid = grantManager.validateGrant('grant-id-123');
+console.log(`Grant valid: ${isValid}`);
+
+// Revoke access immediately
+grantManager.revokeGrant('grant-id-123');
+console.log('Access revoked');
+
+// Grant is no longer valid
+const stillValid = grantManager.validateGrant('grant-id-123');
+console.log(`Grant still valid: ${stillValid}`); // false
 ```
 
 ## 🏗️ Architecture
 
-ComputeShare follows a modular architecture with clear separation between authentication, resource management, SSH credential provisioning, and audit logging. The system uses an SSH Certificate Authority (CA) pattern to issue time-limited certificates instead of sharing permanent keys. A central API server handles OAuth2 authentication, resource catalog management, and reservation logic, while a separate SSH proxy enforces access policies and certificate validation. All sensitive operations are logged to an immutable audit trail.
+ComputeShare follows a modular architecture with clear separation between subscription management, access control, SSH key generation, and pricing.
 
 ### File Structure
 
 ```
-┌─────────────────┐         ┌──────────────────┐
-│   Web Frontend  │◄────────┤  OAuth2 Provider │
-│   (React/Vue)   │         │  (Institutional) │
-└────────┬────────┘         └──────────────────┘
-         │ HTTPS
-         ▼
-┌─────────────────────────────────────────────┐
-│          API Server (Express/TS)            │
-│  ┌─────────────┐  ┌──────────────────────┐ │
-│  │   Auth      │  │  Resource Manager    │ │
-│  │  Middleware │  │  - Catalog           │ │
-│  └─────────────┘  │  - Reservations      │ │
-│                   │  - Availability      │ │
-│  ┌─────────────┐  └──────────────────────┘ │
-│  │   Access    │  ┌──────────────────────┐ │
-│  │  Manager    │  │   Audit Logger       │ │
-│  └─────────────┘  └──────────────────────┘ │
-└──────────┬──────────────────┬───────────────┘
-           │                  │
-           ▼                  ▼
-┌──────────────────┐   ┌─────────────────┐
-│  SSH Certificate │   │   PostgreSQL    │
-│    Authority     │   │   Database      │
-│  (OpenSSH CA)    │   │  - Users        │
-└────────┬─────────┘   │  - Resources    │
-         │             │  - Reservations │
-         │             │  - Audit Logs   │
-         ▼             └─────────────────┘
-┌──────────────────┐
-│   SSH Proxy/     │
-│   Jump Host      │
-│  - Policy Check  │
-│  - Cert Validate │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────────────────────┐
-│   Compute Resources              │
-│  ┌────────┐  ┌────────┐         │
-│  │Cluster │  │  GPU   │  ...    │
-│  │ Nodes  │  │ Nodes  │         │
-│  └────────┘  └────────┘         │
-└──────────────────────────────────┘
+computeshare/
+├── lib/
+│   ├── core.ts      # Core managers: Subscription, AccessGrant, SSHKey, Pricing
+│   └── utils.ts     # Utilities: validation, formatting, security helpers
+├── types.ts         # TypeScript type definitions
+├── demo.ts          # Interactive demonstration script
+├── package.json     # Dependencies and scripts
+├── tsconfig.json    # TypeScript configuration
+└── README.md        # This file
 ```
 
-### Files
+### Core Components
 
-- **lib/core.ts** — Core business logic including ResourceManager, AccessManager, CertificateAuthority, and AuditLogger classes
-- **lib/utils.ts** — Utility functions for duration parsing, date ranges, SSH key generation, and certificate validation
-- **types.ts** — TypeScript type definitions for resources, reservations, credentials, and audit events
-- **demo.js** — Demonstration script showing end-to-end workflow of registering resources, requesting access, and auditing
+- **SubscriptionManager** — Manages compute resource subscriptions, tracks capacity and usage, finds available resources
+- **AccessGrantManager** — Creates/validates/revokes access grants, encrypts/decrypts credentials using AES-256-GCM
+- **SSHKeyManager** — Generates ephemeral RSA key pairs with expiration, creates proxy configurations
+- **PricingEngine** — Calculates prices based on resource type and demand, supports dynamic pricing multipliers
 
-### Design Decisions
+### Resource Types
 
-- SSH Certificate Authority pattern chosen over key sharing to enable automatic expiration and revocation without modifying authorized_keys files on target servers
-- OAuth2/OIDC for authentication allows integration with existing institutional SSO systems and provides standardized token-based access
-- Ephemeral credentials with short TTLs (hours, not days) minimize security risk if credentials are compromised
-- Immutable audit logging to PostgreSQL ensures compliance and enables forensic analysis of all access events
-- SSH proxy/jump host architecture enforces centralized policy checks and certificate validation before allowing access to actual resources
-- Resource availability is determined automatically by monitoring owner activity rather than requiring manual toggling
-- Internal credit system avoids real money transactions while still providing usage tracking and fair resource allocation
+```typescript
+enum ResourceType {
+  SSH_CLUSTER = 'ssh_cluster',   // HPC clusters with SSH access
+  CHATGPT_API = 'chatgpt_api',   // ChatGPT/OpenAI API access
+  GPU_COMPUTE = 'gpu_compute',   // GPU compute nodes
+  CLOUD_CREDITS = 'cloud_credits' // Cloud provider credits
+}
+```
 
 ## 🔧 Technical Details
 
 ### Dependencies
 
-- **express** (^4.18.0) — Web server framework for handling HTTP requests and routing API endpoints
-- **typescript** (^5.0.0) — Type-safe language for building robust, maintainable code with compile-time error checking
-- **jsonwebtoken** — JWT token generation and validation for OAuth2 access tokens and internal session management
-- **ssh2** — SSH protocol implementation for generating keys, signing certificates, and managing SSH connections
-- **pg** — PostgreSQL client for database operations including resource catalog, reservations, and audit logs
-- **bcrypt** — Secure password hashing for local user accounts and API key storage
-- **node-cron** — Scheduled tasks for automatic credential expiration, resource cleanup, and usage monitoring
-- **winston** — Structured logging framework for application logs, security events, and debugging
-- **zod** — Runtime type validation for API requests and configuration to prevent injection attacks
+- **typescript** (^5.3.0) — Type-safe language for robust, maintainable code
+- **ts-node** (^10.9.2) — Run TypeScript directly without compilation
+- **@types/node** (^20.10.0) — Node.js type definitions
 
-### Key Algorithms / Patterns
+### Security Features
 
-- SSH Certificate Authority (CA) signing: Uses OpenSSH certificate format with time-limited validity periods and principal restrictions
-- Role-Based Access Control (RBAC): Hierarchical permission model with resource owners, renters, and administrators
-- Time-window reservation algorithm: Prevents double-booking by checking overlapping time ranges in database with row-level locking
-- Automatic certificate revocation: Certificate serial numbers added to revocation list (CRL) and distributed to all SSH proxies
-- Resource availability detection: Monitors SSH connection activity and system load to automatically mark resources as available/busy
+- **AES-256-GCM encryption** — All credentials encrypted with authenticated encryption
+- **Ephemeral RSA keys** — 4096-bit RSA keys generated on-demand with automatic expiration
+- **PBKDF2 password hashing** — 100,000 iterations with SHA-512 for password storage
+- **Secure random tokens** — Cryptographically secure random number generation
 
-### Important Notes
+### Utility Functions
 
-- SSH CA must be properly secured with hardware security module (HSM) or encrypted key storage in production environments
-- All compute resources must be configured to trust the SSH CA by adding CA public key to /etc/ssh/sshd_config
-- Database connection pool should be tuned based on expected concurrent users to prevent connection exhaustion
-- OAuth2 tokens should be validated on every request and refreshed before expiration to maintain security
-- Audit logs must be write-only and stored in append-only tables to prevent tampering and ensure compliance
+```typescript
+// Validation
+validateEmail(email: string): boolean
+validateSSHPublicKey(key: string): boolean
+validateResourceType(type: string): boolean
+
+// Formatting
+formatDuration(ms: number): string      // "2h 30m"
+formatBytes(bytes: number): string      // "1.5 GB"
+formatCurrency(amount: number): string  // "$1.50"
+
+// Security
+generateSecureToken(length?: number): string
+hashPassword(password: string, salt?: string): { hash, salt }
+verifyPassword(password: string, hash: string, salt: string): boolean
+
+// Duration parsing
+parseDuration(str: string): number  // "4h" → 14400000ms
+```
 
 ## ❓ Troubleshooting
 
-### SSH connection fails with 'Certificate invalid: expired'
+### TypeScript compilation errors
 
-**Cause:** The ephemeral SSH certificate has passed its validity period, which is time-limited for security
+**Cause:** Missing dependencies or incorrect TypeScript version
 
-**Solution:** Request new access credentials through the web interface. Check that your system clock is synchronized with NTP to avoid time skew issues.
+**Solution:** Run `npm install` to ensure all dependencies are installed. Verify you have TypeScript 5.0+.
 
-### Resource registration fails with 'SSH connection test failed'
+### "Cannot find module './lib/core'"
 
-**Cause:** The platform cannot connect to the resource host to verify it exists and is accessible
+**Cause:** Running compiled JavaScript without building first
 
-**Solution:** Verify the SSH host and port are correct, ensure the resource server is online, and check that firewall rules allow connections from the ComputeShare server IP.
+**Solution:** Run `npm run build` to compile TypeScript, then `npm start`. Or use `npm run dev` to run directly with ts-node.
 
-### OAuth2 authentication redirects to error page
+### SSH key generation hangs
 
-**Cause:** OAuth2 provider configuration is incorrect or the callback URL is not whitelisted
+**Cause:** 4096-bit RSA key generation is computationally intensive
 
-**Solution:** Verify CLIENT_ID, CLIENT_SECRET, and REDIRECT_URI in .env match your OAuth2 provider settings. Add http://localhost:3000/auth/callback to allowed redirect URIs.
+**Solution:** This is normal - key generation takes 1-5 seconds depending on system. For faster development, you can temporarily reduce key size in `SSHKeyManager`.
 
-### Database migration fails with 'relation already exists'
+### Grant validation returns false unexpectedly
 
-**Cause:** Previous migration was partially completed or database schema is out of sync with migration files
+**Cause:** Grant may have expired or been revoked
 
-**Solution:** Run 'npm run db:reset' to drop and recreate the database (WARNING: destroys all data), or manually check migration status with 'npm run db:status' and fix conflicts.
-
-### Certificate Authority initialization fails
-
-**Cause:** SSH CA keys are missing, have incorrect permissions, or the CA directory is not writable
-
-**Solution:** Ensure the CA_KEY_PATH directory exists and is writable. Run 'ssh-keygen -t rsa -b 4096 -f /path/to/ca_key' to generate CA keys. Set permissions to 600 on private key.
+**Solution:** Check `grant.expiresAt` to verify the grant hasn't expired. Use `getActiveGrants(subscriptionId)` to see all valid grants for a subscription.
 
 ---
 
-This project was generated as a proof-of-concept for institutional resource sharing. Before deploying in production, conduct thorough security audits, penetration testing, and legal review to ensure compliance with institutional policies and data protection regulations. The SSH Certificate Authority implementation requires careful key management and should use hardware security modules (HSMs) in production. Always consult with your institution's IT security team before deploying systems that handle SSH credentials and access control.
+This project was generated as a proof-of-concept for institutional resource sharing. Before deploying in production, conduct thorough security audits and add proper database storage, OAuth2 authentication, and an SSH Certificate Authority for true ephemeral certificate signing.

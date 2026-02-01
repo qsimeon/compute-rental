@@ -1,0 +1,26 @@
+{
+  "name": "computeshare",
+  "version": "1.0.0",
+  "description": "Securely rent out unused institutional compute resources with automated ephemeral SSH access",
+  "main": "dist/demo.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/demo.js",
+    "dev": "ts-node demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "compute",
+    "ssh",
+    "hpc",
+    "resource-sharing",
+    "institutional"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}
